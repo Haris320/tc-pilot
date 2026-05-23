@@ -44,6 +44,40 @@ export type ValidateResponse = {
 export type TranslateResponse = {
   explanation: string;
   questions: string[];
+  trial_search_status?: "completed" | "failed" | "skipped";
+};
+
+export type AgentTrial = {
+  name: string;
+  phase: string;
+  location: string;
+  summary: string;
+  eligibility: string;
+  url: string;
+  match_score?: number;
+  eligibility_status?: string;
+  match_reasoning?: string;
+  questions_to_ask_oncologist?: string[];
+  nctId?: string;
+  status?: string;
+};
+
+export type TrialSearchQuery = {
+  cancer_type: string;
+  location: string;
+  page_size: number;
+  must_match_terms: string[];
+};
+
+export type FindTrialsLatestResponse = {
+  status: "pending" | "completed" | "failed";
+  trials?: AgentTrial[];
+  planning_rationale?: string;
+  search_query_used?: TrialSearchQuery;
+  appointment_summary?: string;
+  questions_to_ask_oncologist?: string[];
+  note?: string;
+  source?: string;
 };
 
 export type PathologyReport = {
@@ -56,7 +90,7 @@ export type PathologyReport = {
 
 export type DoctorQuestion = {
   id: string;
-  source: "report" | "symptom-alert" | "self";
+  source: "report" | "symptom-alert" | "self" | "trial-search";
   text: string;
   added_at: string;
   done: boolean;

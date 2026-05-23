@@ -9,8 +9,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.agents import trial_finder
 from app.clients import anthropic_client, clickhouse_client
 from app.deps import get_patient_id
+from app.services import patient_context, trial_search_store
 from app.models import (
     PathologyReport,
     PathologyReportList,
@@ -43,7 +45,8 @@ def _row_to_report(r: dict) -> PathologyReport:
 
 @router.post("/translate-report", response_model=TranslateReportOut)
 async def translate_report(
-    body: TranslateReportIn, patient_id: PatientId
+    body: TranslateReportIn,
+    patient_id: PatientId,
 ) -> TranslateReportOut:
     system = (
         "You are a compassionate medical translator helping a testicular cancer patient "
@@ -65,14 +68,30 @@ async def translate_report(
     explanation = str(parsed.get("explanation") or "")
     questions = [str(q) for q in (parsed.get("questions") or [])]
 
+    report_id = str(uuid.uuid4())
     # Persist so the patient can revisit past reports.
     clickhouse_client.insert_rows(
         "pathology_reports",
-        [[str(uuid.uuid4()), patient_id, body.reportText, explanation, json.dumps(questions)]],
+        [[report_id, patient_id, body.reportText, explanation, json.dumps(questions)]],
         column_names=["id", "patient_id", "report_text", "explanation", "questions"],
     )
 
-    return TranslateReportOut(explanation=explanation, questions=questions)
+    trial_search_status: str = "skipped"
+    ctx = patient_context.load_patient_context(patient_id)
+    if ctx.profile:
+        run_id = trial_search_store.insert_pending_run(patient_id, report_id)
+        # Synchronous: wait for the agentic trial search so the client gets the
+        # final state in one round-trip. UI shows a single spinner; no polling.
+        await trial_finder.find_trials_for_patient(patient_id, run_id=run_id)
+        latest = trial_search_store.latest_run(patient_id)
+        latest_status = (latest or {}).get("status", "failed")
+        trial_search_status = "completed" if latest_status == "completed" else "failed"
+
+    return TranslateReportOut(
+        explanation=explanation,
+        questions=questions,
+        trial_search_status=trial_search_status,  # type: ignore[arg-type]
+    )
 
 
 @router.get("/pathology-reports", response_model=PathologyReportList)

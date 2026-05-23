@@ -67,6 +67,8 @@ async def call_claude(
     *,
     feature_tag: str,
     model: str | None = None,
+    span_name: str | None = None,
+    max_tokens: int = 1024,
 ) -> dict[str, Any]:
     """Call Claude, annotate LLMObs span, return parsed JSON (or {"raw": text})."""
     if feature_tag not in ALLOWED_FEATURE_TAGS:
@@ -74,15 +76,16 @@ async def call_claude(
 
     chosen_model = model or DEFAULT_MODEL
     prices = MODEL_PRICES.get(chosen_model, MODEL_PRICES["claude-sonnet-4-20250514"])
+    llm_span_name = span_name or feature_tag
 
     with LLMObs.llm(
         model_name=chosen_model,
         model_provider="anthropic",
-        name=feature_tag,
+        name=llm_span_name,
     ) as span:
         response = _get_client().messages.create(
             model=chosen_model,
-            max_tokens=1024,
+            max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": user}],
         )
@@ -109,7 +112,11 @@ async def call_claude(
                 "output_cost_usd": output_cost,
                 "total_cost_usd": total_cost,
             },
-            tags={"feature": feature_tag, "model": chosen_model},
+            tags={
+                "feature": feature_tag,
+                "model": chosen_model,
+                "span_name": llm_span_name,
+            },
             metadata={"system": system},
         )
 

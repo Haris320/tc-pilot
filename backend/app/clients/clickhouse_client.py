@@ -23,6 +23,7 @@ TABLE_NAMES = (
     "doctor_questions",
     "pathology_reports",
     "patient_medications",
+    "trial_search_runs",
 )
 
 SETUP_STATEMENTS: dict[str, str] = {
@@ -82,6 +83,24 @@ SETUP_STATEMENTS: dict[str, str] = {
           start_date      Date,
           added_at        DateTime DEFAULT now()
         ) ENGINE = ReplacingMergeTree() ORDER BY (patient_id, medication_name)
+    """,
+    "trial_search_runs": """
+        CREATE TABLE IF NOT EXISTS trial_search_runs (
+          run_id                    String,
+          patient_id                String,
+          pathology_report_id       String,
+          status                    String,
+          nimble_params_used        String DEFAULT '{}',
+          planning_rationale        String DEFAULT '',
+          trials_json               String DEFAULT '[]',
+          appointment_summary       String DEFAULT '',
+          questions_json            String DEFAULT '[]',
+          themes_json               String DEFAULT '[]',
+          note                      String DEFAULT '',
+          source                    String DEFAULT 'live',
+          created_at                DateTime DEFAULT now(),
+          updated_at                DateTime DEFAULT now()
+        ) ENGINE = ReplacingMergeTree() ORDER BY (patient_id, run_id)
     """,
 }
 
