@@ -300,6 +300,101 @@ Empty results return `{ "trials": [] }` — frontend renders the "No matches in 
 
 ---
 
+---
+
+## Admin (mock data seeding)
+
+### `POST /admin/seed-mock-cohort?count=1000`
+Generates `count` synthetic patients (prefixed `mock-`) with 90 days of symptom logs
+and 1–2 medications each. Medication effects are baked into the score distributions so
+the analytics dashboard shows real before/after signal. Safe to re-run — produces new
+UUIDs each time.
+
+**Query params**
+- `count` (int, 10–10000, default 1000)
+
+**Response** `200`
+```ts
+{
+  patients: number;
+  medications: number;
+  symptom_logs: number;
+  elapsed_ms: number;
+}
+```
+
+### `DELETE /admin/mock-cohort`
+Removes all `patient_id LIKE 'mock-%'` rows from `patient_profiles`, `patient_symptoms`,
+`symptom_logs`, and `patient_medications`. Uses ClickHouse lightweight mutations
+(non-blocking, propagates asynchronously).
+
+**Response** `200`
+```ts
+{ ok: true; elapsed_ms: number }
+```
+
+---
+
+## Analytics (population-level)
+
+No `X-Patient-Id` required — these are cross-cohort queries.
+
+### `GET /analytics/overview`
+Returns total row counts across the three main tables with the ClickHouse round-trip latency.
+
+**Response** `200`
+```ts
+{
+  patients: number;
+  symptom_logs: number;
+  medications: number;
+  query_ms: number;
+}
+```
+
+### `GET /analytics/medication-impact`
+For each `(medication, symptom)` pair, computes average score in the 14 days before
+vs 14 days after prescription start date, across the whole cohort. Only pairs with
+≥5 data points on each side are included.
+
+**Response** `200`
+```ts
+{
+  rows: Array<{
+    medication: string;    // display name, e.g. "Ondansetron (Zofran)"
+    symptom: string;       // slug, e.g. "nausea"
+    avg_before: number;
+    avg_after: number;
+    delta: number;         // avg_before - avg_after; positive = improvement
+    n_before: number;
+    n_after: number;
+  }>;
+  query_ms: number;
+}
+```
+
+### `GET /analytics/symptom-trends?days=90`
+Average symptom score per day per symptom across all patients for the last `days` days.
+Used to render the population trend line chart.
+
+**Query params**
+- `days` (int, 7–365, default 90)
+
+**Response** `200`
+```ts
+{
+  rows: Array<{
+    day: string;           // YYYY-MM-DD
+    symptom_name: string;  // slug
+    avg_score: number;
+    n: number;             // number of log rows contributing
+  }>;
+  query_ms: number;
+}
+```
+
+---
+
 ## Open questions to lock down
 
 - Does `GET /symptom-summary` need a `?days=14` query param, or is 14 always the window? (Currently hardcoded.)

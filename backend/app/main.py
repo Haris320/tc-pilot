@@ -31,7 +31,7 @@ from contextlib import asynccontextmanager
 
 from app.clients import clickhouse_client
 from app.config import frontend_origin
-from app.routes import health, pathology, profile, questions, symptoms
+from app.routes import admin, analytics, health, pathology, profile, questions, symptoms
 
 
 @asynccontextmanager
@@ -64,6 +64,8 @@ app.include_router(profile.router)
 app.include_router(symptoms.router)
 app.include_router(pathology.router)
 app.include_router(questions.router)
+app.include_router(admin.router)
+app.include_router(analytics.router)
 
 
 @app.exception_handler(StarletteHTTPException)

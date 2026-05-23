@@ -141,3 +141,40 @@ class SummariseOut(BaseModel):
 
 class OkResponse(BaseModel):
     ok: bool = True
+
+
+# ── Analytics ─────────────────────────────────────────────────────────────────
+
+
+class AnalyticsOverview(BaseModel):
+    patients: int
+    symptom_logs: int
+    medications: int
+    query_ms: float
+
+
+class MedicationImpactRow(BaseModel):
+    medication: str
+    symptom: str
+    avg_before: float
+    avg_after: float
+    delta: float
+    n_before: int
+    n_after: int
+
+
+class MedicationImpactResponse(BaseModel):
+    rows: list[MedicationImpactRow]
+    query_ms: float
+
+
+class SymptomTrendPoint(BaseModel):
+    day: str
+    symptom_name: str
+    avg_score: float
+    n: int
+
+
+class SymptomTrendsResponse(BaseModel):
+    rows: list[SymptomTrendPoint]
+    query_ms: float
