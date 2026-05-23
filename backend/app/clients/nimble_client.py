@@ -53,4 +53,9 @@ def health_check() -> dict[str, Any]:
         raise RuntimeError(
             f"Nimble health check found 0 trials (status={status!r})"
         )
-    return {"ok": True, "resultCount": result_count}
+    return {
+        "ok": True,
+        "resultCount": result_count,
+        "nimbleUrl": NIMBLE_EXTRACT_URL,
+        "targetUrl": CT_GOV_HEALTH_SEARCH_URL,
+    }
