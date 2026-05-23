@@ -1,0 +1,16 @@
+[project]
+name = "tc-copilot-backend"
+version = "0.1.0"
+description = "TC Co-pilot FastAPI backend"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=0.104.1",
+    "clickhouse-connect>=1.0.1",
+    "ddtrace>=4.8.7",
+    "fastapi>=0.136.1",
+    "httpx>=0.28.1",
+    "pydantic>=2.13.4",
+    "python-dotenv>=1.2.2",
+    "uvicorn[standard]>=0.47.0",
+]

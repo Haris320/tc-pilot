@@ -26,5 +26,13 @@
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "pnpm": {
+    "overrides": {
+      "baseline-browser-mapping": "2.10.31"
+    }
+  },
+  "overrides": {
+    "baseline-browser-mapping": "2.10.31"
   }
 }
