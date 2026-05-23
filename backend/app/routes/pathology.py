@@ -45,34 +45,61 @@ def _row_to_report(r: dict) -> PathologyReport:
 async def translate_report(
     body: TranslateReportIn, patient_id: PatientId
 ) -> TranslateReportOut:
-    system = (
-        "You are a compassionate medical translator helping a testicular cancer patient "
-        "understand their pathology report. Explain exactly what is written in the report in "
-        "plain, clear English — as if explaining to a smart friend with no medical background.\n\n"
-        "Rules:\n"
-        "- Only explain what is explicitly written in the report. Never add information not present.\n"
-        "- Define every medical term the first time it appears.\n"
-        "- Be accurate but warm in tone.\n"
-        "- After the explanation, generate 4-5 specific questions the patient should ask their "
-        "oncologist at their next appointment, based only on what you found in the report.\n"
-        'Return JSON: {"explanation": string, "questions": string[]}. No markdown, no preamble.'
-    )
-    parsed = await anthropic_client.call_claude(
-        system=system,
-        user=body.reportText,
-        feature_tag="pathology",
-    )
-    explanation = str(parsed.get("explanation") or "")
-    questions = [str(q) for q in (parsed.get("questions") or [])]
+    # Look up the patient's stage first so the workflow span can be tagged with it.
+    with anthropic_client.feature_task("clickhouse-read"):
+        profile_row = clickhouse_client.query_one(
+            """
+            SELECT stage FROM patient_profiles FINAL
+            WHERE patient_id = {pid:String}
+            LIMIT 1
+            """,
+            {"pid": patient_id},
+        )
+    stage = str(profile_row["stage"]) if profile_row and profile_row.get("stage") else None
 
-    # Persist so the patient can revisit past reports.
-    clickhouse_client.insert_rows(
-        "pathology_reports",
-        [[str(uuid.uuid4()), patient_id, body.reportText, explanation, json.dumps(questions)]],
-        column_names=["id", "patient_id", "report_text", "explanation", "questions"],
-    )
+    with anthropic_client.feature_workflow(
+        "pathology-translate", patient_id=patient_id, stage=stage
+    ):
+        system = (
+            "You are a compassionate medical translator helping a testicular cancer patient "
+            "understand their pathology report. Explain exactly what is written in the report in "
+            "plain, clear English — as if explaining to a smart friend with no medical background.\n\n"
+            "Rules:\n"
+            "- Only explain what is explicitly written in the report. Never add information not present.\n"
+            "- Define every medical term the first time it appears.\n"
+            "- Be accurate but warm in tone.\n"
+            "- After the explanation, generate 4-5 specific questions the patient should ask their "
+            "oncologist at their next appointment, based only on what you found in the report.\n"
+            'Return JSON: {"explanation": string, "questions": string[]}. No markdown, no preamble.'
+        )
 
-    return TranslateReportOut(explanation=explanation, questions=questions)
+        def _evals(parsed: dict) -> dict[str, float]:
+            qs = parsed.get("questions") or []
+            expl = str(parsed.get("explanation") or "")
+            return {
+                "question_count": float(len(qs)),
+                "explanation_words": float(len(expl.split())),
+                "clean_json": 0.0 if "raw" in parsed else 1.0,
+            }
+
+        parsed = await anthropic_client.call_claude(
+            system=system,
+            user=body.reportText,
+            feature_tag="pathology",
+            patient_id=patient_id,
+            eval_fn=_evals,
+        )
+        explanation = str(parsed.get("explanation") or "")
+        questions = [str(q) for q in (parsed.get("questions") or [])]
+
+        with anthropic_client.feature_task("clickhouse-write"):
+            clickhouse_client.insert_rows(
+                "pathology_reports",
+                [[str(uuid.uuid4()), patient_id, body.reportText, explanation, json.dumps(questions)]],
+                column_names=["id", "patient_id", "report_text", "explanation", "questions"],
+            )
+
+        return TranslateReportOut(explanation=explanation, questions=questions)
 
 
 @router.get("/pathology-reports", response_model=PathologyReportList)
