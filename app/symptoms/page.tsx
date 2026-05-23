@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { SymptomForm } from "@/components/SymptomForm";
@@ -16,6 +16,38 @@ import type {
   SymptomScore,
 } from "@/lib/types";
 
+// Static demo dataset for the toggle below the chart. Lives entirely client-side
+// — never written to the DB. Trends loosely mirror a BEP cycle: fatigue + neuropathy
+// climb, nausea spikes then recovers, pain stays low.
+const DEMO_SYMPTOMS: Symptom[] = [
+  { symptom_name: "fatigue", display_name: "Fatigue", is_default: true },
+  { symptom_name: "nausea", display_name: "Nausea", is_default: true },
+  { symptom_name: "neuropathy", display_name: "Neuropathy", is_default: true },
+  { symptom_name: "pain", display_name: "Pain", is_default: true },
+];
+
+const DEMO_SCORES: Record<string, number[]> = {
+  fatigue:    [3, 4, 4, 5, 5, 6, 6, 6, 7, 7, 7, 8, 8, 8],
+  nausea:     [2, 3, 5, 6, 7, 6, 4, 3, 2, 4, 6, 7, 5, 3],
+  neuropathy: [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5],
+  pain:       [4, 4, 3, 3, 3, 4, 4, 3, 3, 3, 2, 2, 2, 3],
+};
+
+function buildDemoRows(): ChartRow[] {
+  const today = new Date();
+  const rows: ChartRow[] = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const day = d.toISOString().slice(0, 10);
+    const idx = 13 - i;
+    const row: ChartRow = { day };
+    for (const s of DEMO_SYMPTOMS) row[s.symptom_name] = DEMO_SCORES[s.symptom_name][idx];
+    rows.push(row);
+  }
+  return rows;
+}
+
 export default function SymptomsPage() {
   const router = useRouter();
   const [symptoms, setSymptoms] = useState<Symptom[]>([]);
@@ -24,6 +56,9 @@ export default function SymptomsPage() {
   // Independent loading flags so each section renders as soon as its data arrives.
   const [symptomsLoading, setSymptomsLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(true);
+  // Demo toggle — purely client-side, never touches the DB.
+  const [demoMode, setDemoMode] = useState(false);
+  const demoRows = useMemo(buildDemoRows, []);
 
   // Monotonic token for the summary request. Only the latest in-flight call
   // is allowed to touch summary / summaryLoading state — earlier responses
@@ -128,7 +163,21 @@ export default function SymptomsPage() {
           )}
         </div>
         <div style={{ display: "grid", gap: 24 }}>
-          <SymptomChart rows={chart} symptoms={symptoms} />
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className={`btn btn-sm ${demoMode ? "btn-sage" : "btn-ghost"}`}
+              onClick={() => setDemoMode((v) => !v)}
+              aria-pressed={demoMode}
+              title="Swap the chart with a static demo dataset. Nothing is saved."
+            >
+              {demoMode ? "Showing demo data" : "Show demo data"}
+            </button>
+          </div>
+          <SymptomChart
+            rows={demoMode ? demoRows : chart}
+            symptoms={demoMode ? DEMO_SYMPTOMS : symptoms}
+          />
           {summaryLoading ? (
             <div className="card" style={{ padding: 24, color: "var(--muted)" }}>
               <div className="eyebrow" style={{ marginBottom: 6 }}>Weekly read</div>
