@@ -1,0 +1,338 @@
+@import "tailwindcss";
+
+/* =========================================================================
+   TC Co-pilot — theme tokens
+   Source: Claude Design prototype (TC Co-pilot.html)
+   Light theme default; [data-theme="dark"] on <html> for dark.
+   ========================================================================= */
+:root {
+  /* Surfaces */
+  --bg: oklch(0.985 0.005 85);
+  --bg-elev: oklch(0.975 0.007 85);
+  --surface: oklch(1 0 0);
+  --surface-2: oklch(0.965 0.008 80);
+  --border: oklch(0.91 0.008 80);
+  --border-strong: oklch(0.84 0.012 80);
+
+  /* Text */
+  --ink: oklch(0.22 0.015 250);
+  --ink-2: oklch(0.36 0.014 250);
+  --muted: oklch(0.56 0.012 250);
+  --muted-2: oklch(0.72 0.01 250);
+
+  /* Accents */
+  --sage: oklch(0.62 0.06 165);
+  --sage-soft: oklch(0.92 0.025 165);
+  --sage-ink: oklch(0.32 0.05 165);
+  --clay: oklch(0.78 0.05 55);
+  --clay-soft: oklch(0.95 0.02 60);
+  --clay-ink: oklch(0.42 0.06 50);
+  --plum: oklch(0.55 0.07 320);
+  --plum-soft: oklch(0.94 0.018 320);
+
+  /* Status */
+  --good: oklch(0.62 0.07 160);
+  --warn: oklch(0.7 0.09 75);
+  --warn-soft: oklch(0.96 0.04 75);
+  --warn-ink: oklch(0.4 0.08 70);
+  --alert: oklch(0.6 0.13 28);
+  --alert-soft: oklch(0.95 0.05 30);
+  --alert-ink: oklch(0.42 0.1 28);
+  --plum-ink: oklch(0.35 0.07 320);
+  --clay-border: oklch(0.88 0.03 60);
+
+  /* Interactive */
+  --btn-primary-hover: oklch(0.32 0.02 250);
+  --btn-sage-hover: oklch(0.56 0.07 165);
+  --scrollbar-thumb: oklch(0.85 0.01 80);
+  --scrollbar-thumb-hover: oklch(0.78 0.012 80);
+  --overlay: oklch(0.2 0.02 250 / 0.28);
+
+  /* Radii */
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+  --r-2xl: 32px;
+
+  /* Shadow */
+  --shadow-sm: 0 1px 2px oklch(0.2 0.02 250 / 0.04), 0 1px 1px oklch(0.2 0.02 250 / 0.03);
+  --shadow-md: 0 1px 2px oklch(0.2 0.02 250 / 0.04), 0 8px 24px -8px oklch(0.2 0.02 250 / 0.08);
+  --shadow-lg: 0 1px 2px oklch(0.2 0.02 250 / 0.04), 0 24px 48px -16px oklch(0.2 0.02 250 / 0.12);
+
+  /* Type — bound via next/font in app/layout.tsx */
+  --font-display: var(--font-instrument-serif), "Times New Roman", serif;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
+}
+
+[data-theme="dark"] {
+  --bg: oklch(0.165 0.008 250);
+  --bg-elev: oklch(0.195 0.009 250);
+  --surface: oklch(0.215 0.010 250);
+  --surface-2: oklch(0.245 0.011 250);
+  --border: oklch(0.285 0.012 250);
+  --border-strong: oklch(0.365 0.014 250);
+
+  --ink: oklch(0.96 0.005 85);
+  --ink-2: oklch(0.82 0.008 85);
+  --muted: oklch(0.62 0.012 250);
+  --muted-2: oklch(0.48 0.012 250);
+
+  --sage: oklch(0.74 0.07 165);
+  --sage-soft: oklch(0.30 0.04 165);
+  --sage-ink: oklch(0.85 0.06 165);
+  --clay: oklch(0.78 0.06 55);
+  --clay-soft: oklch(0.30 0.04 55);
+  --clay-ink: oklch(0.86 0.06 60);
+  --plum: oklch(0.70 0.07 320);
+  --plum-soft: oklch(0.28 0.04 320);
+  --plum-ink: oklch(0.85 0.06 320);
+  --clay-border: oklch(0.36 0.04 60);
+
+  --good: oklch(0.74 0.07 160);
+  --warn: oklch(0.78 0.09 75);
+  --warn-soft: oklch(0.30 0.04 75);
+  --warn-ink: oklch(0.86 0.07 75);
+  --alert: oklch(0.70 0.13 28);
+  --alert-soft: oklch(0.30 0.06 30);
+  --alert-ink: oklch(0.86 0.10 28);
+
+  --btn-primary-hover: oklch(0.88 0.005 85);
+  --btn-sage-hover: oklch(0.68 0.07 165);
+  --scrollbar-thumb: oklch(0.32 0.012 250);
+  --scrollbar-thumb-hover: oklch(0.42 0.014 250);
+  --overlay: oklch(0.08 0.01 250 / 0.6);
+
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.18), 0 1px 1px oklch(0 0 0 / 0.12);
+  --shadow-md: 0 1px 2px oklch(0 0 0 / 0.18), 0 8px 24px -8px oklch(0 0 0 / 0.35);
+  --shadow-lg: 0 1px 2px oklch(0 0 0 / 0.2), 0 24px 48px -16px oklch(0 0 0 / 0.5);
+}
+
+html { transition: background-color .35s ease, color .35s ease; }
+body, .card, .topbar, .profile, .btn, .nav a {
+  transition: background-color .3s ease, color .3s ease, border-color .3s ease;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  letter-spacing: -0.005em;
+}
+
+button { font-family: inherit; cursor: pointer; }
+input, textarea { font-family: inherit; }
+
+::selection { background: var(--sage-soft); color: var(--sage-ink); }
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+
+/* =========================================================================
+   App shell
+   ========================================================================= */
+.app { min-height: 100%; display: flex; flex-direction: column; }
+.page { flex: 1; }
+.container { max-width: 1240px; margin: 0 auto; padding: 0 40px; }
+
+/* =========================================================================
+   Top bar + brand
+   ========================================================================= */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 40px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(8px);
+}
+.topbar-left { display: flex; align-items: center; gap: 28px; }
+
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  text-decoration: none;
+}
+.brand-mark {
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  background: var(--ink);
+  display: grid; place-items: center;
+  color: var(--bg);
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: -0.04em;
+}
+.brand em { font-style: italic; color: var(--clay-ink); margin-left: 2px; }
+
+.nav { display: flex; gap: 4px; }
+.nav a {
+  font-size: 13.5px;
+  color: var(--muted);
+  text-decoration: none;
+  padding: 8px 12px;
+  border-radius: 999px;
+  letter-spacing: -0.005em;
+  transition: all .2s ease;
+}
+.nav a:hover { color: var(--ink); background: var(--surface-2); }
+.nav a.active { color: var(--ink); background: var(--surface-2); }
+
+.profile {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 6px 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--clay-soft); color: var(--clay-ink);
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 500;
+}
+
+/* =========================================================================
+   Buttons — pill-shaped, ink-on-cream primary
+   ========================================================================= */
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 40px; padding: 0 18px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  border: 1px solid transparent;
+  transition: all .18s ease;
+  letter-spacing: -0.005em;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-sm { height: 32px; padding: 0 12px; font-size: 12.5px; }
+
+.btn-primary { background: var(--ink); color: var(--bg); }
+.btn-primary:hover:not(:disabled) { background: var(--btn-primary-hover); }
+
+.btn-ghost {
+  background: transparent; color: var(--ink);
+  border-color: var(--border-strong);
+}
+.btn-ghost:hover:not(:disabled) { background: var(--surface-2); }
+
+.btn-sage { background: var(--sage); color: white; }
+.btn-sage:hover:not(:disabled) { background: var(--btn-sage-hover); }
+
+/* =========================================================================
+   Card
+   ========================================================================= */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-sm);
+}
+
+/* =========================================================================
+   Type — display serif, eyebrow mono, lede ink-2
+   ========================================================================= */
+.h-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.02;
+  color: var(--ink);
+}
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.lede {
+  color: var(--ink-2);
+  font-size: 16px;
+  line-height: 1.55;
+  letter-spacing: -0.005em;
+  max-width: 56ch;
+}
+
+/* =========================================================================
+   Pills + dots
+   ========================================================================= */
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 26px; padding: 0 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.pill-clay { background: var(--clay-soft); border-color: var(--clay-border); color: var(--clay-ink); }
+.pill-sage { background: var(--sage-soft); border-color: transparent; color: var(--sage-ink); }
+.pill-warn { background: var(--warn-soft); border-color: transparent; color: var(--warn-ink); }
+.pill-alert { background: var(--alert-soft); border-color: transparent; color: var(--alert-ink); }
+
+.dot { width: 6px; height: 6px; border-radius: 50%; background: var(--sage); }
+.dot.warn { background: var(--warn); }
+.dot.alert { background: var(--alert); }
+.dot.muted { background: var(--muted-2); }
+
+/* =========================================================================
+   Input
+   ========================================================================= */
+.input {
+  width: 100%;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  font: 400 14px/1.5 var(--font-sans);
+  letter-spacing: -0.005em;
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+.input::placeholder { color: var(--muted-2); }
+.input:hover { border-color: var(--border-strong); }
+.input:focus {
+  outline: none;
+  border-color: var(--ink-2);
+  box-shadow: 0 0 0 3px var(--sage-soft);
+}
+textarea.input { resize: vertical; min-height: 120px; line-height: 1.6; }
+
+/* =========================================================================
+   Motion — gentle fade-in on hydrated cards
+   ========================================================================= */
+@keyframes tc-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+[data-enter] { animation: tc-enter 320ms ease both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
