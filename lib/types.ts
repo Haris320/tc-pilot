@@ -6,6 +6,7 @@
 export type Profile = {
   patient_id: string;
   name?: string;
+  age?: number;
   cancer_type: string;
   stage: "I" | "II" | "III";
   location: string;
@@ -43,6 +44,14 @@ export type ValidateResponse = {
 export type TranslateResponse = {
   explanation: string;
   questions: string[];
+};
+
+export type PathologyReport = {
+  id: string;
+  report_text: string;
+  explanation: string;
+  questions: string[];
+  created_at: string; // ISO datetime
 };
 
 export type DoctorQuestion = {

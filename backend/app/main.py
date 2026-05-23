@@ -27,20 +27,43 @@ if os.getenv("DD_LLMOBS_ENABLED", "").strip() in {"1", "true", "True"}:
         in {"1", "true", "True"},
     )
 
-from app.config import frontend_origin
-from app.routes import health
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="TC Co-pilot API", version="0.1.0")
+from app.clients import clickhouse_client
+from app.config import frontend_origin
+from app.routes import health, pathology, profile, questions, symptoms
+
+
+@asynccontextmanager
+async def lifespan(_: "FastAPI"):
+    # Auto-create tables on every startup — idempotent, never blocks feature work.
+    try:
+        clickhouse_client.setup_tables()
+    except Exception as exc:
+        print(f"[startup] ClickHouse setup failed (non-fatal): {exc}")
+    yield
+
+
+app = FastAPI(title="TC Co-pilot API", version="0.1.0", lifespan=lifespan)
+
+_origins = [frontend_origin()]
+if "localhost:3000" not in frontend_origin():
+    _origins.append("http://localhost:3000")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_origin()],
+    allow_origins=_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Patient-Id", "Authorization"],
+    expose_headers=["X-Patient-Id"],
 )
 
 app.include_router(health.router)
+app.include_router(profile.router)
+app.include_router(symptoms.router)
+app.include_router(pathology.router)
+app.include_router(questions.router)
 
 
 @app.exception_handler(StarletteHTTPException)

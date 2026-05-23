@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { MOCK_PROFILE } from "@/lib/mocks";
+import { api, ApiError } from "@/lib/api";
+import type { Profile } from "@/lib/types";
 
 const TILES = [
   { href: "/symptoms", eyebrow: "Symptoms", title: "How are you feeling?" },
@@ -15,9 +16,15 @@ export default async function Home() {
   const patientId = cookieStore.get("patient_id")?.value;
   if (!patientId) redirect("/onboarding");
 
-  // In the mock phase, profile/name come from the fixture.
-  // Once the backend lands, swap to `await api<Profile>("/profile", { patientId })`.
-  const name = MOCK_PROFILE.name;
+  let name: string | undefined;
+  try {
+    const profile = await api<Profile>("/profile", { patientId });
+    name = profile.name ?? undefined;
+  } catch (err) {
+    // 404 means the cookie is stale (profile missing) — send back to onboarding.
+    if (err instanceof ApiError && err.status === 404) redirect("/onboarding");
+    // Other errors: render the page without a name rather than hard-failing.
+  }
 
   return (
     <div className="container">

@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { api, ApiError } from "@/lib/api";
 import { newPatientId, setPatientId } from "@/lib/patient";
+import type { Profile } from "@/lib/types";
 
 const STAGES = ["I", "II", "III"] as const;
 type Stage = (typeof STAGES)[number];
@@ -11,6 +13,7 @@ type Stage = (typeof STAGES)[number];
 export default function OnboardingPage() {
   const router = useRouter();
   const [name, setName] = useState("");
+  const [age, setAge] = useState("");
   const [stage, setStage] = useState<Stage>("II");
   const [location, setLocation] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -24,8 +27,31 @@ export default function OnboardingPage() {
     setSubmitting(true);
     const id = newPatientId();
     setPatientId(id);
-    // TODO(backend): POST /profile and POST /symptoms/seed
-    // For now the cookie + mock fixtures carry the demo.
+    try {
+      await api<Profile>("/profile", {
+        patientId: id,
+        body: {
+          name: name.trim() || null,
+          age: age ? parseInt(age, 10) : null,
+          cancer_type: "Testicular Cancer",
+          stage,
+          location: location.trim(),
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Something went wrong saving your profile.";
+      toast.error(msg);
+      setSubmitting(false);
+      return;
+    }
+
+    // Seed default symptoms — best-effort, don't block the redirect.
+    try {
+      await api("/symptoms/seed", { patientId: id, method: "POST" });
+    } catch (err) {
+      console.warn("Symptom seed failed (non-fatal):", err);
+    }
+
     toast.success("All set.");
     router.replace("/");
   };
@@ -56,6 +82,25 @@ export default function OnboardingPage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             autoComplete="given-name"
+          />
+        </div>
+
+        <div style={{ marginBottom: 24 }}>
+          <label
+            className="eyebrow"
+            style={{ display: "block", marginBottom: 8 }}
+          >
+            Age <span style={{ textTransform: "none", color: "var(--muted-2)" }}>(optional)</span>
+          </label>
+          <input
+            className="input"
+            type="number"
+            placeholder="32"
+            min={1}
+            max={120}
+            value={age}
+            onChange={(e) => setAge(e.target.value)}
+            style={{ maxWidth: 120 }}
           />
         </div>
 
