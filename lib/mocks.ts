@@ -3,7 +3,7 @@
  * Every fixture matches a planned API response shape — swap-in is one line per call site.
  */
 
-import type { Profile, Symptom, SummaryResponse, TranslateResponse, DoctorQuestion, ChartRow } from "./types";
+import type { Profile, Symptom, SummaryResponse, TranslateResponse, DoctorQuestion, ChartRow, Trial } from "./types";
 
 export const MOCK_PROFILE: Profile = {
   patient_id: "demo-patient",
@@ -103,6 +103,39 @@ Seminomas at this stage have a very high cure rate.`,
     "Is there anything in this report that affects my fertility long-term?",
   ],
 };
+
+export const MOCK_TRIALS: Trial[] = [
+  {
+    name: "Phase III Trial of Single-Dose Carboplatin vs. Surveillance in Stage I Seminoma",
+    phase: "Phase 3",
+    location: "Dana-Farber Cancer Institute, Boston, MA",
+    summary:
+      "This study compares a single dose of carboplatin chemotherapy against active surveillance for men with stage I seminoma after orchiectomy. The goal is to see whether the one-dose treatment reduces the chance of relapse without the long-term side effects of more intensive chemo.",
+    eligibility:
+      "Men 18-50 with newly diagnosed stage I seminoma, post-orchiectomy, no prior chemo or radiation.",
+    url: "https://clinicaltrials.gov/study/NCT04467437",
+  },
+  {
+    name: "Reduced-Dose Cisplatin BEP for Good-Risk Germ Cell Tumors",
+    phase: "Phase 2",
+    location: "Memorial Sloan Kettering, New York, NY",
+    summary:
+      "Tests whether lowering the cisplatin dose in standard BEP chemotherapy preserves the cure rate while reducing hearing loss, neuropathy, and kidney effects. Three cycles instead of four are also evaluated for good-risk patients.",
+    eligibility:
+      "Men with good-risk metastatic germ cell tumor (IGCCCG criteria), no prior systemic therapy.",
+    url: "https://clinicaltrials.gov/study/NCT03937843",
+  },
+  {
+    name: "Audiology Monitoring During Platinum-Based Chemotherapy",
+    phase: "Observational",
+    location: "Multi-site (Boston / NYC / Philadelphia)",
+    summary:
+      "An observational study tracking hearing changes during and after cisplatin treatment. Participants get free audiograms at set intervals; data feeds into national guidelines for monitoring ototoxicity.",
+    eligibility:
+      "Anyone scheduled to receive cisplatin-based chemotherapy. No treatment changes — observational only.",
+    url: "https://clinicaltrials.gov/study/NCT05421741",
+  },
+];
 
 export const MOCK_QUESTIONS: DoctorQuestion[] = [
   {
