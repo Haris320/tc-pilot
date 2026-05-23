@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from ddtrace.llmobs import LLMObs
 
 from app.clients import anthropic_client, clickhouse_client
 from app.deps import get_patient_id
@@ -116,42 +117,64 @@ def mark_done(question_id: str, patient_id: PatientId) -> OkResponse:
 
 @router.post("/doctor-questions/summarise", response_model=SummariseOut)
 async def summarise_questions(patient_id: PatientId) -> SummariseOut:
-    rows = clickhouse_client.query_all(
-        """
-        SELECT source, text
-        FROM doctor_questions FINAL
-        WHERE patient_id = {pid:String} AND done = 0
-        ORDER BY added_at ASC
-        """,
-        {"pid": patient_id},
-    )
-    if not rows:
-        return SummariseOut(themes=[])
-
-    payload = [{"source": r["source"], "text": r["text"]} for r in rows]
-    system = (
-        "You are preparing a patient's appointment prep sheet from a mixed list of questions "
-        "they have collected (from pathology reports, symptom trends, and their own notes).\n\n"
-        "Deduplicate near-identical questions, group related ones under short themed headings, "
-        "and order by likely importance for the next oncology visit. Keep every distinct "
-        "concern — do not drop questions.\n\n"
-        'Return JSON: {"themes": [{"heading": string, "questions": string[]}]}. '
-        "No markdown, no preamble."
-    )
-    parsed = await anthropic_client.call_claude(
-        system=system,
-        user=json.dumps(payload),
-        feature_tag="doctor-questions",
-    )
-    themes_raw = parsed.get("themes") or []
-    themes: list[SummariseTheme] = []
-    for t in themes_raw:
-        if not isinstance(t, dict):
-            continue
-        themes.append(
-            SummariseTheme(
-                heading=str(t.get("heading") or "Questions"),
-                questions=[str(q) for q in (t.get("questions") or [])],
+    with anthropic_client.feature_workflow(
+        "doctor-questions-summarise", patient_id=patient_id
+    ):
+        with anthropic_client.feature_task("clickhouse-read") as read_span:
+            rows = clickhouse_client.query_all(
+                """
+                SELECT source, text
+                FROM doctor_questions FINAL
+                WHERE patient_id = {pid:String} AND done = 0
+                ORDER BY added_at ASC
+                """,
+                {"pid": patient_id},
             )
+            LLMObs.annotate(span=read_span, metrics={"input_questions": len(rows)})
+
+        if not rows:
+            return SummariseOut(themes=[])
+
+        input_questions = len(rows)
+        payload = [{"source": r["source"], "text": r["text"]} for r in rows]
+        system = (
+            "You are preparing a patient's appointment prep sheet from a mixed list of questions "
+            "they have collected (from pathology reports, symptom trends, and their own notes).\n\n"
+            "Deduplicate near-identical questions, group related ones under short themed headings, "
+            "and order by likely importance for the next oncology visit. Keep every distinct "
+            "concern — do not drop questions.\n\n"
+            'Return JSON: {"themes": [{"heading": string, "questions": string[]}]}. '
+            "No markdown, no preamble."
         )
-    return SummariseOut(themes=themes)
+
+        def _evals(parsed: dict) -> dict[str, float]:
+            themes_list = parsed.get("themes") or []
+            theme_count = sum(1 for t in themes_list if isinstance(t, dict))
+            output_questions = sum(
+                len(t.get("questions") or []) for t in themes_list if isinstance(t, dict)
+            )
+            return {
+                "theme_count": float(theme_count),
+                "output_questions": float(output_questions),
+                "dedup_ratio": float(output_questions) / float(max(input_questions, 1)),
+            }
+
+        parsed = await anthropic_client.call_claude(
+            system=system,
+            user=json.dumps(payload),
+            feature_tag="doctor-questions",
+            patient_id=patient_id,
+            eval_fn=_evals,
+        )
+        themes_raw = parsed.get("themes") or []
+        themes: list[SummariseTheme] = []
+        for t in themes_raw:
+            if not isinstance(t, dict):
+                continue
+            themes.append(
+                SummariseTheme(
+                    heading=str(t.get("heading") or "Questions"),
+                    questions=[str(q) for q in (t.get("questions") or [])],
+                )
+            )
+        return SummariseOut(themes=themes)

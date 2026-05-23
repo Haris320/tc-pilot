@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { SymptomForm } from "@/components/SymptomForm";
@@ -25,6 +25,12 @@ export default function SymptomsPage() {
   const [symptomsLoading, setSymptomsLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(true);
 
+  // Monotonic token for the summary request. Only the latest in-flight call
+  // is allowed to touch summary / summaryLoading state — earlier responses
+  // (Claude can take 5-10s) are dropped on the floor. Prevents a stale fetch
+  // from clobbering the new one after Save.
+  const summaryReqId = useRef(0);
+
   const loadSymptoms = useCallback(async () => {
     const res = await api<{ symptoms: Symptom[] }>("/symptoms");
     setSymptoms(res.symptoms);
@@ -36,8 +42,19 @@ export default function SymptomsPage() {
   }, []);
 
   const loadSummary = useCallback(async () => {
-    const res = await api<SummaryResponse>("/symptom-summary");
-    setSummary(res);
+    const myId = ++summaryReqId.current;
+    setSummaryLoading(true);
+    try {
+      const res = await api<SummaryResponse>("/symptom-summary");
+      if (myId === summaryReqId.current) setSummary(res);
+    } catch (err) {
+      if (myId === summaryReqId.current) {
+        console.error(err);
+        if (err instanceof ApiError) toast.error(err.message);
+      }
+    } finally {
+      if (myId === summaryReqId.current) setSummaryLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -55,12 +72,7 @@ export default function SymptomsPage() {
       .finally(() => setSymptomsLoading(false));
 
     // Summary calls Claude — runs in parallel but doesn't block the form.
-    loadSummary()
-      .catch((err) => {
-        console.error(err);
-        if (err instanceof ApiError) toast.error(err.message);
-      })
-      .finally(() => setSummaryLoading(false));
+    loadSummary();
   }, [loadSymptoms, loadChart, loadSummary, router]);
 
   const onSubmit = async (scores: SymptomScore[]) => {
@@ -69,13 +81,9 @@ export default function SymptomsPage() {
       const total = scores.reduce((a, s) => a + s.score, 0);
       toast.success(`Saved ${scores.length} scores (total ${total}).`);
       // Chart refreshes immediately; summary re-runs Claude in the background.
-      setSummaryLoading(true);
+      // loadSummary() handles its own loading flag + race protection.
       loadChart().catch(console.error);
-      loadSummary()
-        .catch((err) => {
-          if (err instanceof ApiError) toast.error(err.message);
-        })
-        .finally(() => setSummaryLoading(false));
+      loadSummary();
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Couldn't save your log.";
       toast.error(msg);

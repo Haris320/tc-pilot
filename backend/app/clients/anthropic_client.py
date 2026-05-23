@@ -3,18 +3,24 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
-from typing import Any
+from contextlib import contextmanager
+from typing import Any, Callable, Iterator
 
 from anthropic import Anthropic
 from ddtrace.llmobs import LLMObs
 
 from app.config import require_env
 
+_log = logging.getLogger(__name__)
+
 # USD per 1M tokens — verify against Anthropic pricing on build day.
 MODEL_PRICES: dict[str, dict[str, float]] = {
     "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
     "claude-sonnet-4-6": {"input": 3.00, "output": 15.00},
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
+    "claude-haiku-4-5-20251001": {"input": 1.00, "output": 5.00},
 }
 
 DEFAULT_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
@@ -61,14 +67,52 @@ def _parse_json_text(text: str) -> dict[str, Any]:
         return {"raw": text}
 
 
+@contextmanager
+def feature_workflow(
+    name: str,
+    *,
+    patient_id: str | None = None,
+    stage: str | None = None,
+) -> Iterator[Any]:
+    """Top-level workflow span for a feature handler.
+
+    Wraps LLMObs.workflow() and tags patient_id / stage so judges can filter
+    the LLMObs trace list by patient session.
+    """
+    with LLMObs.workflow(name=name) as span:
+        tags: dict[str, str] = {}
+        if patient_id:
+            tags["patient_id"] = patient_id
+        if stage:
+            tags["stage"] = stage
+        if tags:
+            LLMObs.annotate(span=span, tags=tags)
+        yield span
+
+
+@contextmanager
+def feature_task(name: str) -> Iterator[Any]:
+    """Child task span — used for ClickHouse read/write inside a feature workflow."""
+    with LLMObs.task(name=name) as span:
+        yield span
+
+
 async def call_claude(
     system: str,
     user: str,
     *,
     feature_tag: str,
     model: str | None = None,
+    patient_id: str | None = None,
+    eval_fn: Callable[[dict[str, Any]], dict[str, float]] | None = None,
 ) -> dict[str, Any]:
-    """Call Claude, annotate LLMObs span, return parsed JSON (or {"raw": text})."""
+    """Call Claude, annotate LLMObs span, return parsed JSON (or {"raw": text}).
+
+    Optional:
+        patient_id: tagged onto the LLM span for per-patient filtering.
+        eval_fn:    given the parsed response, returns {label: score} pairs
+                    which are submitted as LLMObs evaluations on this span.
+    """
     if feature_tag not in ALLOWED_FEATURE_TAGS:
         raise ValueError(f"Invalid feature_tag: {feature_tag!r}")
 
@@ -98,6 +142,10 @@ async def call_claude(
         output_cost = _cost(output_tokens, prices["output"])
         total_cost = input_cost + output_cost
 
+        tags: dict[str, Any] = {"feature": feature_tag, "model": chosen_model}
+        if patient_id:
+            tags["patient_id"] = patient_id
+
         LLMObs.annotate(
             span=span,
             input_data=[{"role": "user", "content": user}],
@@ -109,8 +157,25 @@ async def call_claude(
                 "output_cost_usd": output_cost,
                 "total_cost_usd": total_cost,
             },
-            tags={"feature": feature_tag, "model": chosen_model},
+            tags=tags,
             metadata={"system": system},
         )
 
-        return _parse_json_text(text)
+        parsed = _parse_json_text(text)
+
+        if eval_fn is not None:
+            try:
+                scores = eval_fn(parsed)
+                exported = LLMObs.export_span(span)
+                if exported:
+                    for label, value in scores.items():
+                        LLMObs.submit_evaluation(
+                            label=label,
+                            metric_type="score",
+                            value=float(value),
+                            span=exported,
+                        )
+            except Exception:
+                _log.exception("LLMObs eval_fn failed for feature=%s", feature_tag)
+
+        return parsed
