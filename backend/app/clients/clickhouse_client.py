@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from datetime import datetime
 from typing import Any
 
@@ -21,6 +22,7 @@ TABLE_NAMES = (
     "symptom_logs",
     "doctor_questions",
     "pathology_reports",
+    "patient_medications",
 )
 
 SETUP_STATEMENTS: dict[str, str] = {
@@ -71,6 +73,15 @@ SETUP_STATEMENTS: dict[str, str] = {
           questions    String,
           created_at   DateTime DEFAULT now()
         ) ENGINE = MergeTree() ORDER BY (patient_id, created_at, id)
+    """,
+    "patient_medications": """
+        CREATE TABLE IF NOT EXISTS patient_medications (
+          patient_id      String,
+          medication_name String,
+          display_name    String,
+          start_date      Date,
+          added_at        DateTime DEFAULT now()
+        ) ENGINE = ReplacingMergeTree() ORDER BY (patient_id, medication_name)
     """,
 }
 
@@ -181,4 +192,108 @@ def query_all(sql: str, parameters: dict[str, Any] | None = None) -> list[dict[s
 def query_one(sql: str, parameters: dict[str, Any] | None = None) -> dict[str, Any] | None:
     rows = query_all(sql, parameters)
     return rows[0] if rows else None
+
+
+# ── Population-level analytics ────────────────────────────────────────────────
+
+
+def analytics_overview() -> dict[str, Any]:
+    """Count rows across the three main tables; return with query_ms."""
+    client = get_client()
+    t0 = time.perf_counter()
+    with _client_lock:
+        result = client.query(
+            """
+            SELECT
+              (SELECT count() FROM patient_profiles)   AS patients,
+              (SELECT count() FROM symptom_logs)        AS symptom_logs,
+              (SELECT count() FROM patient_medications) AS medications
+            """
+        )
+    query_ms = round((time.perf_counter() - t0) * 1000, 1)
+    row = list(result.named_results())[0]
+    return {
+        "patients": int(row["patients"]),
+        "symptom_logs": int(row["symptom_logs"]),
+        "medications": int(row["medications"]),
+        "query_ms": query_ms,
+    }
+
+
+def medication_impact() -> dict[str, Any]:
+    """
+    For each (medication, symptom) pair, compute avg score in the 14 days
+    before vs 14 days after the patient started that medication — across
+    the whole cohort. Returns rows sorted by improvement (before - after DESC).
+    """
+    client = get_client()
+    t0 = time.perf_counter()
+    with _client_lock:
+        result = client.query(
+            """
+            SELECT
+              pm.display_name                                            AS medication,
+              sl.symptom_name                                            AS symptom,
+              round(avgIf(sl.score, sl.logged_at <  toDateTime(pm.start_date)), 2) AS avg_before,
+              round(avgIf(sl.score, sl.logged_at >= toDateTime(pm.start_date)), 2) AS avg_after,
+              countIf(sl.logged_at <  toDateTime(pm.start_date))        AS n_before,
+              countIf(sl.logged_at >= toDateTime(pm.start_date))        AS n_after
+            FROM symptom_logs AS sl
+            INNER JOIN patient_medications AS pm USING (patient_id)
+            WHERE sl.logged_at BETWEEN toDateTime(pm.start_date) - INTERVAL 14 DAY
+                                   AND toDateTime(pm.start_date) + INTERVAL 14 DAY
+            GROUP BY medication, symptom
+            HAVING n_before >= 5 AND n_after >= 5
+            ORDER BY (avg_before - avg_after) DESC
+            """
+        )
+    query_ms = round((time.perf_counter() - t0) * 1000, 1)
+    rows = []
+    for r in result.named_results():
+        rows.append({
+            "medication": r["medication"],
+            "symptom": r["symptom"],
+            "avg_before": float(r["avg_before"]),
+            "avg_after": float(r["avg_after"]),
+            "delta": round(float(r["avg_before"]) - float(r["avg_after"]), 2),
+            "n_before": int(r["n_before"]),
+            "n_after": int(r["n_after"]),
+        })
+    return {"rows": rows, "query_ms": query_ms}
+
+
+def symptom_trends_population(days: int = 90) -> dict[str, Any]:
+    """
+    Average symptom score per day per symptom across all patients,
+    for the last `days` days.
+    """
+    client = get_client()
+    t0 = time.perf_counter()
+    with _client_lock:
+        result = client.query(
+            f"""
+            SELECT
+              toDate(logged_at)    AS day,
+              symptom_name,
+              round(avg(score), 2) AS avg_score,
+              count()              AS n
+            FROM symptom_logs
+            WHERE logged_at >= now() - INTERVAL {days} DAY
+            GROUP BY day, symptom_name
+            ORDER BY day ASC, symptom_name ASC
+            """
+        )
+    query_ms = round((time.perf_counter() - t0) * 1000, 1)
+    rows = []
+    for r in result.named_results():
+        day = r["day"]
+        if hasattr(day, "isoformat"):
+            day = day.isoformat()
+        rows.append({
+            "day": str(day),
+            "symptom_name": r["symptom_name"],
+            "avg_score": float(r["avg_score"]),
+            "n": int(r["n"]),
+        })
+    return {"rows": rows, "query_ms": query_ms}
 
