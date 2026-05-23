@@ -1,15 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { TrialFinder } from "@/components/TrialFinder";
 import { TrialCard } from "@/components/TrialCard";
-import { MOCK_PROFILE, MOCK_TRIALS } from "@/lib/mocks";
-import type { Trial } from "@/lib/types";
+import { MOCK_TRIALS } from "@/lib/mocks";
+import { api, ApiError } from "@/lib/api";
+import type { PathologyReport, Profile, Trial } from "@/lib/types";
 
 export default function TrialsPage() {
   const [pending, setPending] = useState(false);
   const [trials, setTrials] = useState<Trial[] | null>(null);
+
+  // Load real profile + latest pathology report to pre-fill the form.
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [latestReport, setLatestReport] = useState<PathologyReport | null>(null);
+
+  useEffect(() => {
+    api<Profile>("/profile").then(setProfile).catch(console.error);
+
+    api<PathologyReport>("/pathology-reports/latest")
+      .then(setLatestReport)
+      .catch(() => {
+        // 404 is normal for new users — ignore.
+      });
+  }, []);
 
   const onSearch = async (req: {
     cancerType: string;
@@ -19,14 +34,22 @@ export default function TrialsPage() {
     setPending(true);
     setTrials(null);
     try {
-      // TODO(backend): const data = await api<{ trials: Trial[] }>("/find-trials", { body: req });
+      // Pass pathology context so Claude can match trials to the patient's report.
+      const body = {
+        ...req,
+        stage: profile?.stage,
+        pathologyContext: latestReport?.explanation ?? null,
+      };
+
+      // TODO(backend): wire up the real /find-trials endpoint.
+      // const data = await api<{ trials: Trial[] }>("/find-trials", { body });
       // setTrials(data.trials);
-      void req;
+      void body;
       await new Promise((r) => setTimeout(r, 1100));
       setTrials(MOCK_TRIALS);
       toast.success(`Found ${MOCK_TRIALS.length} trials.`);
-    } catch {
-      toast.error("Search failed. Please try again.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Search failed. Please try again.");
     } finally {
       setPending(false);
     }
@@ -41,12 +64,23 @@ export default function TrialsPage() {
           Live search of ClinicalTrials.gov, filtered to what&apos;s open near
           you and summarised in plain English.
         </p>
+        {latestReport && (
+          <div className="pill pill-sage" style={{ marginTop: 12, width: "fit-content" }}>
+            <span className="dot" style={{ background: "var(--sage)" }} />
+            Pathology report from{" "}
+            {new Date(latestReport.created_at).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+            })}{" "}
+            will be used to match trials.
+          </div>
+        )}
       </section>
 
       <section style={{ paddingBottom: 80, display: "grid", gap: 24 }}>
         <TrialFinder
-          defaultCancerType={MOCK_PROFILE.cancer_type}
-          defaultLocation={MOCK_PROFILE.location}
+          defaultCancerType={profile?.cancer_type ?? "Testicular Cancer"}
+          defaultLocation={profile?.location ?? ""}
           onSearch={onSearch}
           pending={pending}
         />

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from datetime import datetime
 from typing import Any
 
@@ -12,12 +13,14 @@ from clickhouse_connect.driver import Client
 from app.config import require_env
 
 _client: Client | None = None
+_client_lock = threading.Lock()
 
 TABLE_NAMES = (
     "patient_profiles",
     "patient_symptoms",
     "symptom_logs",
     "doctor_questions",
+    "pathology_reports",
 )
 
 SETUP_STATEMENTS: dict[str, str] = {
@@ -25,9 +28,11 @@ SETUP_STATEMENTS: dict[str, str] = {
         CREATE TABLE IF NOT EXISTS patient_profiles (
           patient_id    String,
           created_at    DateTime DEFAULT now(),
+          name          String DEFAULT '',
           cancer_type   String,
           stage         String,
-          location      String
+          location      String,
+          age           UInt8 DEFAULT 0
         ) ENGINE = ReplacingMergeTree() ORDER BY patient_id
     """,
     "patient_symptoms": """
@@ -56,6 +61,16 @@ SETUP_STATEMENTS: dict[str, str] = {
           added_at    DateTime DEFAULT now(),
           done        UInt8 DEFAULT 0
         ) ENGINE = ReplacingMergeTree() ORDER BY (patient_id, added_at, id)
+    """,
+    "pathology_reports": """
+        CREATE TABLE IF NOT EXISTS pathology_reports (
+          id           String,
+          patient_id   String,
+          report_text  String,
+          explanation  String,
+          questions    String,
+          created_at   DateTime DEFAULT now()
+        ) ENGINE = MergeTree() ORDER BY (patient_id, created_at, id)
     """,
 }
 
@@ -92,6 +107,13 @@ def setup_tables() -> list[str]:
     client = get_client()
     for ddl in SETUP_STATEMENTS.values():
         client.command(ddl)
+    # Backfill columns added after initial deploy — idempotent.
+    client.command(
+        "ALTER TABLE patient_profiles ADD COLUMN IF NOT EXISTS name String DEFAULT ''"
+    )
+    client.command(
+        "ALTER TABLE patient_profiles ADD COLUMN IF NOT EXISTS age UInt8 DEFAULT 0"
+    )
     return list(TABLE_NAMES)
 
 
@@ -138,3 +160,25 @@ def ping() -> bool:
     client = get_client()
     client.query("SELECT 1")
     return True
+
+
+# ── Generic helpers used by feature routes ────────────────────────────────────
+
+
+def insert_rows(table: str, rows: list[list[Any]], column_names: list[str]) -> None:
+    client = get_client()
+    with _client_lock:
+        client.insert(table, rows, column_names=column_names)
+
+
+def query_all(sql: str, parameters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    client = get_client()
+    with _client_lock:
+        result = client.query(sql, parameters=parameters or {})
+        return list(result.named_results())
+
+
+def query_one(sql: str, parameters: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    rows = query_all(sql, parameters)
+    return rows[0] if rows else None
+

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Symptom, SymptomScore } from "@/lib/types";
 
 type Props = {
@@ -13,6 +13,16 @@ export function SymptomForm({ symptoms, onSubmit }: Props) {
     Object.fromEntries(symptoms.map((s) => [s.symptom_name, 3])),
   );
   const [submitting, setSubmitting] = useState(false);
+
+  // When the symptom list changes (e.g. a new tracker is added), keep existing
+  // scores and seed any new symptoms with a neutral default.
+  useEffect(() => {
+    setScores((prev) => {
+      const next: Record<string, number> = {};
+      for (const s of symptoms) next[s.symptom_name] = prev[s.symptom_name] ?? 3;
+      return next;
+    });
+  }, [symptoms]);
 
   const set = (name: string, v: number) =>
     setScores((prev) => ({ ...prev, [name]: v }));
