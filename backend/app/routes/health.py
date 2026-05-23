@@ -127,6 +127,30 @@ async def health_datadog() -> dict:
         ) from exc
 
 
+@router.get("/health/nimble/structured")
+def health_nimble_structured(
+    cancer_type: str = "testicular cancer",
+    location: str = "Boston",
+    page_size: int = 5,
+) -> dict:
+    """Live Nimble test with real params → structured CT.gov API JSON."""
+    from app.clients.nimble_client import TrialSearchParams, extract_structured
+
+    try:
+        return extract_structured(
+            TrialSearchParams(
+                cancer_type=cancer_type,
+                location=location,
+                page_size=min(page_size, 20),
+            )
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "Nimble structured extract failed", "detail": str(exc)},
+        ) from exc
+
+
 @router.get("/health/nimble")
 def health_nimble() -> dict:
     """Nimble gate: live CT.gov scrape + httpx outbound span in APM."""
