@@ -1,10 +1,23 @@
-"""Nimble ClinicalTrials.gov integration."""
+"""Nimble ClinicalTrials.gov integration.
+
+Strategy: use the Nimble **Extract** API to fetch ClinicalTrials.gov **API v2**
+JSON. The agentic trial finder layer in :mod:`app.agents.trial_finder` builds
+:class:`TrialSearchParams` from the planning LLM and calls :func:`search_trials`
+to get a structured candidate list ready for ranking by the next LLM step.
+
+The old `POST /v1/agents/run` (Nimble Studio custom agent) path was removed
+because the required template was not published on the Agents API in our
+account. Extract over CT.gov v2 gives us deterministic, structured data and
+keeps Nimble as the sponsor hero call in the demo narrative.
+"""
 
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
 
@@ -24,7 +37,7 @@ NCT_PATTERN = re.compile(r"NCT\d{8}", re.IGNORECASE)
 
 @dataclass(frozen=True)
 class TrialSearchParams:
-    """Matches POST /find-trials request fields."""
+    """Inputs the planning LLM resolves before the Nimble Extract call."""
 
     cancer_type: str = "Testicular Cancer"
     location: str = "United States"
@@ -33,7 +46,7 @@ class TrialSearchParams:
 
 
 def build_search_url(params: TrialSearchParams) -> str:
-    """ClinicalTrials.gov search page (JS-rendered)."""
+    """ClinicalTrials.gov search page (JS-rendered) — used by /health/nimble."""
     cond = quote_plus(params.cancer_type)
     loc = quote_plus(params.location)
     return f"{CT_GOV_SEARCH_BASE}?cond={cond}&locStr={loc}"
@@ -48,7 +61,6 @@ def build_api_url(params: TrialSearchParams) -> str:
         f"&pageSize={params.page_size}"
     )
     if params.location and params.location.strip():
-        # Location filter as free-text geo query (API accepts locStr-style terms)
         loc = quote_plus(params.location.strip())
         query += f"&query.locn={loc}"
     return query
@@ -70,7 +82,7 @@ def _extract(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def extract_search_page(params: TrialSearchParams | None = None) -> dict[str, Any]:
-    """Render the CT.gov search UI (vx10) — used for /health/nimble and find-trials scrape."""
+    """Render the CT.gov search UI (vx10) — used for /health/nimble."""
     p = params or TrialSearchParams()
     return _extract(
         {
@@ -88,11 +100,7 @@ def extract_search_page(params: TrialSearchParams | None = None) -> dict[str, An
 
 
 def extract_structured(params: TrialSearchParams) -> dict[str, Any]:
-    """
-  Fetch structured trial records via Nimble → CT.gov API v2 (vx6, no browser).
-
-  Returns normalized trial dicts ready for Claude trial-finder or direct display.
-  """
+    """Fetch structured trial records via Nimble → CT.gov API v2 (vx6, no browser)."""
     nimble_payload = _extract(
         {
             "url": build_api_url(params),
@@ -125,7 +133,7 @@ def extract_structured(params: TrialSearchParams) -> dict[str, Any]:
 
 
 def parse_studies_from_api(api_json: dict[str, Any]) -> list[dict[str, Any]]:
-    """Map CT.gov API v2 studies[] to a stable shape for Claude / find-trials."""
+    """Map CT.gov API v2 studies[] to a stable shape for the agent."""
     out: list[dict[str, Any]] = []
     for study in api_json.get("studies") or []:
         protocol = study.get("protocolSection") or {}
@@ -133,13 +141,19 @@ def parse_studies_from_api(api_json: dict[str, Any]) -> list[dict[str, Any]]:
         status = protocol.get("statusModule") or {}
         design = protocol.get("designModule") or {}
         contacts = protocol.get("contactsLocationsModule") or {}
+        eligibility_mod = protocol.get("eligibilityModule") or {}
+        description_mod = protocol.get("descriptionModule") or {}
+
         nct_id = ident.get("nctId") or ""
         if not nct_id:
             continue
+
         phases = design.get("phases") or []
-        phase = phases[0] if phases else "Not specified"
-        if len(phases) > 1:
-            phase = ", ".join(phases)
+        if phases:
+            phase = ", ".join(phases) if len(phases) > 1 else phases[0]
+        else:
+            phase = "Not specified"
+
         locations = contacts.get("locations") or []
         location_parts: list[str] = []
         if locations:
@@ -149,6 +163,10 @@ def parse_studies_from_api(api_json: dict[str, Any]) -> list[dict[str, Any]]:
             country = loc0.get("country") or ""
             location_parts = [p for p in (city, state, country) if p]
         location_str = ", ".join(location_parts) if location_parts else "See study page"
+
+        brief_summary = description_mod.get("briefSummary") or ""
+        eligibility_text = eligibility_mod.get("eligibilityCriteria") or ""
+
         out.append(
             {
                 "nctId": nct_id,
@@ -157,10 +175,52 @@ def parse_studies_from_api(api_json: dict[str, Any]) -> list[dict[str, Any]]:
                 "location": location_str,
                 "status": status.get("overallStatus") or "",
                 "url": f"https://clinicaltrials.gov/study/{nct_id}",
-                "summarySource": "api",
+                "summary": str(brief_summary)[:2000],
+                "eligibility": str(eligibility_text)[:2000],
+                "summarySource": "ct-gov-api-v2",
             }
         )
     return out
+
+
+def search_trials(
+    *,
+    cancer_type: str = "Testicular Cancer",
+    location: str = "United States",
+    page_size: int = 10,
+    requirements: str | None = None,
+) -> list[dict[str, Any]]:
+    """Agent-facing wrapper: build TrialSearchParams and return ranked candidates."""
+    params = TrialSearchParams(
+        cancer_type=cancer_type.strip() or "Testicular Cancer",
+        location=location.strip() or "United States",
+        page_size=max(1, min(int(page_size or 10), 25)),
+        requirements=requirements,
+    )
+    return extract_structured(params)["trials"]
+
+
+def load_cached_trials() -> list[dict[str, Any]]:
+    """Demo insurance: serve cached Nimble Extract response when API fails."""
+    fixture_path = (
+        Path(__file__).resolve().parent.parent
+        / "fixtures"
+        / "nimble_results_sample.json"
+    )
+    if not fixture_path.is_file():
+        return []
+    payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+    if isinstance(payload, dict) and isinstance(payload.get("trials"), list):
+        return payload["trials"]
+    if isinstance(payload, dict) and isinstance(payload.get("response"), dict):
+        inner = payload["response"]
+        if isinstance(inner.get("trials"), list):
+            return inner["trials"]
+    return []
+
+
+def use_nimble_cache_enabled() -> bool:
+    return os.getenv("USE_NIMBLE_CACHE", "0").strip() in {"1", "true", "True"}
 
 
 def count_trial_results(payload: dict[str, Any]) -> int:
@@ -177,7 +237,14 @@ def count_trial_results(payload: dict[str, Any]) -> int:
 def scrape_clinical_trials_search(url: str | None = None) -> dict[str, Any]:
     """Backward-compatible wrapper for health check."""
     if url:
-        return _extract({"url": url, "render": True, "driver": "vx10", "browser_actions": [{"wait": 5000}]})
+        return _extract(
+            {
+                "url": url,
+                "render": True,
+                "driver": "vx10",
+                "browser_actions": [{"wait": 5000}],
+            }
+        )
     return extract_search_page()
 
 

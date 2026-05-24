@@ -103,12 +103,16 @@ async def call_claude(
     *,
     feature_tag: str,
     model: str | None = None,
+    span_name: str | None = None,
+    max_tokens: int = 1024,
     patient_id: str | None = None,
     eval_fn: Callable[[dict[str, Any]], dict[str, float]] | None = None,
 ) -> dict[str, Any]:
     """Call Claude, annotate LLMObs span, return parsed JSON (or {"raw": text}).
 
     Optional:
+        span_name:  override the LLM span name (defaults to feature_tag).
+        max_tokens: max output tokens for the Anthropic call.
         patient_id: tagged onto the LLM span for per-patient filtering.
         eval_fn:    given the parsed response, returns {label: score} pairs
                     which are submitted as LLMObs evaluations on this span.
@@ -118,15 +122,16 @@ async def call_claude(
 
     chosen_model = model or DEFAULT_MODEL
     prices = MODEL_PRICES.get(chosen_model, MODEL_PRICES["claude-sonnet-4-20250514"])
+    llm_span_name = span_name or feature_tag
 
     with LLMObs.llm(
         model_name=chosen_model,
         model_provider="anthropic",
-        name=feature_tag,
+        name=llm_span_name,
     ) as span:
         response = _get_client().messages.create(
             model=chosen_model,
-            max_tokens=1024,
+            max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": user}],
         )
@@ -142,7 +147,11 @@ async def call_claude(
         output_cost = _cost(output_tokens, prices["output"])
         total_cost = input_cost + output_cost
 
-        tags: dict[str, Any] = {"feature": feature_tag, "model": chosen_model}
+        tags: dict[str, Any] = {
+            "feature": feature_tag,
+            "model": chosen_model,
+            "span_name": llm_span_name,
+        }
         if patient_id:
             tags["patient_id"] = patient_id
 

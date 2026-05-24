@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 
 Stage = Literal["I", "II", "III"]
-QuestionSource = Literal["report", "symptom-alert", "self"]
+QuestionSource = Literal["report", "symptom-alert", "self", "trial-search"]
 
 
 # ── Profile ───────────────────────────────────────────────────────────────────
@@ -91,6 +91,63 @@ class TranslateReportIn(BaseModel):
 class TranslateReportOut(BaseModel):
     explanation: str
     questions: list[str]
+    trial_search_status: Literal["completed", "failed", "skipped"] = "skipped"
+
+
+class SummariseTheme(BaseModel):
+    heading: str
+    questions: list[str]
+
+
+# ── Trials ────────────────────────────────────────────────────────────────────
+
+
+class AgentTrial(BaseModel):
+    name: str
+    phase: str
+    location: str
+    summary: str
+    eligibility: str
+    url: str
+    match_score: int | float | None = None
+    eligibility_status: str | None = None
+    match_reasoning: str | None = None
+    questions_to_ask_oncologist: list[str] = Field(default_factory=list)
+    nctId: str | None = None
+    status: str | None = None
+
+
+class TrialSearchQuery(BaseModel):
+    """LLM-planned inputs for the Nimble Extract over CT.gov v2.
+
+    Optional defaults keep older trial_search_runs rows (pre-pivot schema)
+    backwards compatible without a migration.
+    """
+
+    cancer_type: str = "Testicular Cancer"
+    location: str = "United States"
+    page_size: int = 10
+    must_match_terms: list[str] = Field(default_factory=list)
+
+    model_config = {"extra": "ignore"}
+
+
+class FindTrialsLatestOut(BaseModel):
+    status: Literal["pending", "completed", "failed"]
+    trials: list[AgentTrial] | None = None
+    planning_rationale: str | None = None
+    search_query_used: TrialSearchQuery | None = None
+    appointment_summary: str | None = None
+    questions_to_ask_oncologist: list[str] | None = None
+    themes: list[SummariseTheme] | None = None
+    note: str | None = None
+    source: str | None = None
+
+
+class FindTrialsOut(BaseModel):
+    status: Literal["pending", "completed", "failed"] = "pending"
+    message: str = ""
+    run_id: str | None = None
 
 
 # ── Pathology reports ─────────────────────────────────────────────────────────
@@ -128,11 +185,6 @@ class DoctorQuestionIn(BaseModel):
     # Accept either a single text or a list of items.
     text: str | None = None
     items: list[str] | None = None
-
-
-class SummariseTheme(BaseModel):
-    heading: str
-    questions: list[str]
 
 
 class SummariseOut(BaseModel):
